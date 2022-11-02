@@ -1,3 +1,8 @@
+mod signaller_message;
+mod state;
+mod peer;
+mod session;
+
 use std::{
     collections::HashMap,
     env,
@@ -17,130 +22,16 @@ use uuid::Uuid;
 use failure::{Error, format_err};
 use serde::{Serialize, Deserialize};
 use log::{debug, error, log_enabled, info, Level};
-
+use crate::signaller_message::SignallerMessage;
 
 type Result<T> = std::result::Result<T, Error>;
-
 type Tx = UnboundedSender<Message>;
 
 
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum SignallerMessage {
-    Offer {
-        // sdp: RTCSessionDescription,
-        uuid: String,
-        to: String,
-    },
-    Answer {
-        // sdp: RTCSessionDescription,
-        uuid: String,
-        to: String,
-    },
-    Ice {
-        // ice: RTCIceCandidateInit,
-        uuid: String,
-        to: String,
-    },
-    Join {
-        uuid: String,
-        room: String,
-    },
-    Start {
-        uuid: String,
-    },
-    Leave {
-        uuid: String,
-    },
-}
 
-
-struct State {
-    sessions: HashMap<Uuid, Session>,
-    peers: HashMap<Uuid, Peer>,
-}
-
-struct Session {
-    sharer: Uuid,
-    viewers: HashSet<Uuid>,
-}
-
-impl Session {
-    fn new(sharer: Uuid) -> Self {
-        Session {
-            sharer,
-            viewers: Default::default()
-        }
-    }
-}
-
-struct Peer {
-    session: Uuid,
-    sender: Tx,
-    peer_type: PeerType,
-}
-
-enum PeerType {
-    Sharer {},
-    Viewer {}
-}
-
-type StateType = Arc<Mutex<State>>;
-
-impl State {
-    fn new() -> StateType {
-        Arc::new(Mutex::new(
-            State {
-                sessions: Default::default(),
-                peers: Default::default()
-            }
-        ))
-    }
-
-    fn add_sharer(&mut self, id: Uuid, sender: Tx) -> Result<()> {
-        if self.sessions.contains_key(&id) {
-            return Err(format_err!("Session already exists"));
-        }
-        self.sessions.insert(id, Session::new(id));
-        self.peers.insert(id, Peer {
-            session: id,
-            sender,
-            peer_type: PeerType::Sharer {}
-        });
-        Ok(())
-    }
-
-    fn add_viewer(&mut self, id: Uuid, session: Uuid, sender: Tx) -> Result<()> {
-        if !self.sessions.contains_key(&session) {
-            return Err(format_err!("Session does not exist"));
-        }
-        self.sessions.get_mut(&session).unwrap().viewers.insert(id);
-        self.peers.insert(id, Peer {
-            session,
-            sender,
-            peer_type: PeerType::Viewer {}
-        });
-        Ok(())
-    }
-
-    fn end_session(&mut self, id: Uuid) -> Result<()> {
-        /////////////////
-        let session_id = self.peers.get(&id).unwrap().session;
-        if !self.sessions.contains_key(&session_id) {
-            return Err(format_err!("Session does not exist"));
-        }
-        let session = self.sessions.remove(&session_id).unwrap();
-        for viewer in session.viewers {
-            self.peers.remove(&viewer);
-        }
-        self.peers.remove(&session.sharer);
-        Ok(())
-    }
-}
-
-fn handle_message(state: &mut State, tx: &Tx, raw_payload: &str) -> Result<()> {
+fn handle_message(state: &mut state::State, tx: &Tx, raw_payload: &str) -> Result<()> {
     let msg: SignallerMessage = serde_json::from_str(raw_payload)?;
-    let forward_message = |state: &State, to: String| -> Result<()> {
+    let forward_message = |state: &state::State, to: String| -> Result<()> {
         let peer = state.peers.get(&Uuid::parse_str(&to)?).ok_or(format_err!("Peer does not exist"))?;
         peer.sender.unbounded_send(raw_payload.into())?;
         Ok(())
@@ -175,7 +66,7 @@ fn handle_message(state: &mut State, tx: &Tx, raw_payload: &str) -> Result<()> {
     Ok(())
 }
 
-async fn handle_connection(state: StateType, raw_stream: TcpStream, addr: SocketAddr) {
+async fn handle_connection(state: state::StateType, raw_stream: TcpStream, addr: SocketAddr) {
     info!("Incoming TCP connection from: {}", addr);
 
     let ws_stream = tokio_tungstenite::accept_async(raw_stream)
@@ -221,7 +112,7 @@ async fn main() -> Result<()> {
     );
     let addr = env::args().nth(1).unwrap_or_else(|| "0.0.0.0:8080".to_string());
 
-    let state = State::new();
+    let state = state::State::new();
 
     // Create the event loop and TCP listener we'll accept connections on.
     let listener = TcpListener::bind(&addr).await.expect("Failed to bind");
