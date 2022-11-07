@@ -1,67 +1,51 @@
-mod signaller_message;
-mod state;
 mod peer;
 mod session;
+mod signaller_message;
+mod state;
 
-use std::{
-    collections::HashMap,
-    env,
-    io::Error as IoError,
-    net::SocketAddr,
-    sync::{Arc, Mutex},
-};
-use std::collections::HashSet;
-use std::hash::Hash;
+use std::{env, net::SocketAddr};
 
 use futures_channel::mpsc::{unbounded, UnboundedSender};
 use futures_util::{future, pin_mut, stream::TryStreamExt, StreamExt};
 
+use crate::signaller_message::SignallerMessage;
+use failure::{format_err, Error};
+use log::info;
+
 use tokio::net::{TcpListener, TcpStream};
 use tungstenite::protocol::Message;
 use uuid::Uuid;
-use failure::{Error, format_err};
-use serde::{Serialize, Deserialize};
-use log::{debug, error, log_enabled, info, Level};
-use crate::signaller_message::SignallerMessage;
 
 type Result<T> = std::result::Result<T, Error>;
 type Tx = UnboundedSender<Message>;
 
-
-
 fn handle_message(state: &mut state::State, tx: &Tx, raw_payload: &str) -> Result<()> {
     let msg: SignallerMessage = serde_json::from_str(raw_payload)?;
     let forward_message = |state: &state::State, to: String| -> Result<()> {
-        let peer = state.peers.get(&Uuid::parse_str(&to)?).ok_or(format_err!("Peer does not exist"))?;
+        let peer = state
+            .peers
+            .get(&Uuid::parse_str(&to)?)
+            .ok_or(format_err!("Peer does not exist"))?;
         peer.sender.unbounded_send(raw_payload.into())?;
         Ok(())
     };
 
     match msg {
         SignallerMessage::Join { uuid, room } => {
-            state.add_viewer(
-                Uuid::parse_str(&uuid)?,
-                Uuid::parse_str(&room)?,
-                tx.clone()
-            )?;
+            state.add_viewer(Uuid::parse_str(&uuid)?, Uuid::parse_str(&room)?, tx.clone())?;
             forward_message(&state, room)?;
-        },
+        }
         SignallerMessage::Start { uuid } => {
-            state.add_sharer(
-                Uuid::parse_str(&uuid)?,
-                tx.clone()
-            )?;
-        },
+            state.add_sharer(Uuid::parse_str(&uuid)?, tx.clone())?;
+        }
         SignallerMessage::Leave { uuid } => {
-            state.end_session(
-                Uuid::parse_str(&uuid)?
-            )?;
-        },
-        SignallerMessage::Offer { uuid, to } |
-        SignallerMessage::Answer { uuid, to } |
-        SignallerMessage::Ice { uuid, to } => {
+            state.end_session(Uuid::parse_str(&uuid)?)?;
+        }
+        SignallerMessage::Offer { uuid: _, to }
+        | SignallerMessage::Answer { uuid: _, to }
+        | SignallerMessage::Ice { uuid: _, to } => {
             forward_message(&state, to)?;
-        },
+        }
     };
     Ok(())
 }
@@ -84,11 +68,15 @@ async fn handle_connection(state: state::StateType, raw_stream: TcpStream, addr:
             return future::ok(());
         }
 
-        info!("Received a message from {}: {}", addr, msg.to_text().unwrap());
+        info!(
+            "Received a message from {}: {}",
+            addr,
+            msg.to_text().unwrap()
+        );
 
         if let Ok(s) = msg.to_text() {
             let mut locked_state = state.lock().unwrap();
-            if let Err(e) = handle_message(&mut locked_state, &tx,s) {
+            if let Err(e) = handle_message(&mut locked_state, &tx, s) {
                 info!("Error handling message: {}", e);
             }
         }
@@ -106,11 +94,12 @@ async fn handle_connection(state: state::StateType, raw_stream: TcpStream, addr:
 
 #[tokio::main]
 async fn main() -> Result<()> {
-
     env_logger::init_from_env(
         env_logger::Env::default().filter_or(env_logger::DEFAULT_FILTER_ENV, "debug"),
     );
-    let addr = env::args().nth(1).unwrap_or_else(|| "0.0.0.0:8080".to_string());
+    let addr = env::args()
+        .nth(1)
+        .unwrap_or_else(|| "0.0.0.0:8080".to_string());
 
     let state = state::State::new();
 

@@ -10,7 +10,7 @@ impl Session {
     pub fn new(sharer: Uuid) -> Self {
         Session {
             sharer,
-            viewers: Default::default()
+            viewers: Default::default(),
         }
     }
 }

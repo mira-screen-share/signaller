@@ -1,11 +1,9 @@
-use uuid::Uuid;
-use futures_channel::mpsc::{unbounded, UnboundedSender};
+use futures_channel::mpsc::UnboundedSender;
+use serde::{Deserialize, Serialize};
 use tungstenite::protocol::Message;
-use serde::{Serialize, Deserialize};
+use uuid::Uuid;
 
 type Tx = UnboundedSender<Message>;
-
-
 
 pub struct Peer {
     pub session: Uuid,
@@ -17,5 +15,5 @@ pub struct Peer {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum PeerType {
     Sharer {},
-    Viewer {}
+    Viewer {},
 }

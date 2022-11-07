@@ -1,11 +1,11 @@
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
-use failure::{Error, format_err};
-use futures_channel::mpsc::{unbounded, UnboundedSender};
-use tungstenite::protocol::Message;
-use uuid::Uuid;
 use crate::peer::{Peer, PeerType};
 use crate::session::Session;
+use failure::{format_err, Error};
+use futures_channel::mpsc::UnboundedSender;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+use tungstenite::protocol::Message;
+use uuid::Uuid;
 
 type Result<T> = std::result::Result<T, Error>;
 type Tx = UnboundedSender<Message>;
@@ -19,12 +19,10 @@ pub type StateType = Arc<Mutex<State>>;
 
 impl State {
     pub fn new() -> StateType {
-        Arc::new(Mutex::new(
-            State {
-                sessions: Default::default(),
-                peers: Default::default()
-            }
-        ))
+        Arc::new(Mutex::new(State {
+            sessions: Default::default(),
+            peers: Default::default(),
+        }))
     }
 
     pub fn add_sharer(&mut self, id: Uuid, sender: Tx) -> Result<()> {
@@ -32,11 +30,14 @@ impl State {
             return Err(format_err!("Session already exists"));
         }
         self.sessions.insert(id, Session::new(id));
-        self.peers.insert(id, Peer {
-            session: id,
-            sender,
-            peer_type: PeerType::Sharer {}
-        });
+        self.peers.insert(
+            id,
+            Peer {
+                session: id,
+                sender,
+                peer_type: PeerType::Sharer {},
+            },
+        );
         Ok(())
     }
 
@@ -45,11 +46,14 @@ impl State {
             return Err(format_err!("Session does not exist"));
         }
         self.sessions.get_mut(&session).unwrap().viewers.insert(id);
-        self.peers.insert(id, Peer {
-            session,
-            sender,
-            peer_type: PeerType::Viewer {}
-        });
+        self.peers.insert(
+            id,
+            Peer {
+                session,
+                sender,
+                peer_type: PeerType::Viewer {},
+            },
+        );
         Ok(())
     }
 
