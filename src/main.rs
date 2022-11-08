@@ -51,9 +51,12 @@ fn handle_message(state: &mut state::State, tx: &Tx, raw_payload: &str) -> Resul
 }
 
 async fn handle_connection(state: state::StateType, raw_stream: TcpStream, addr: SocketAddr) {
-    let ws_stream = tokio_tungstenite::accept_async(raw_stream)
-        .await
-        .expect("Error during the websocket handshake occurred");
+    let ws_stream = match tokio_tungstenite::accept_async(raw_stream).await {
+        Ok(ws_stream) => ws_stream,
+        Err(_e) => {
+            return; // silently return if the incoming connection does not use ws protocol
+        }
+    };
 
     info!("WebSocket connection established: {}", addr);
 
