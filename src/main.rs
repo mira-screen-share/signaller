@@ -25,7 +25,7 @@ fn handle_message(state: &mut state::State, tx: &Tx, raw_payload: &str) -> Resul
         let peer = state
             .peers
             .get(&Uuid::parse_str(&to)?)
-            .ok_or(format_err!("Peer does not exist"))?;
+            .ok_or_else(|| format_err!("Peer does not exist"))?;
         peer.sender.unbounded_send(raw_payload.into())?;
         Ok(())
     };
@@ -33,7 +33,7 @@ fn handle_message(state: &mut state::State, tx: &Tx, raw_payload: &str) -> Resul
     match msg {
         SignallerMessage::Join { uuid, room } => {
             state.add_viewer(Uuid::parse_str(&uuid)?, Uuid::parse_str(&room)?, tx.clone())?;
-            forward_message(&state, room)?;
+            forward_message(state, room)?;
         }
         SignallerMessage::Start { uuid } => {
             state.add_sharer(Uuid::parse_str(&uuid)?, tx.clone())?;
@@ -44,7 +44,7 @@ fn handle_message(state: &mut state::State, tx: &Tx, raw_payload: &str) -> Resul
         SignallerMessage::Offer { uuid: _, to }
         | SignallerMessage::Answer { uuid: _, to }
         | SignallerMessage::Ice { uuid: _, to } => {
-            forward_message(&state, to)?;
+            forward_message(state, to)?;
         }
     };
     Ok(())
@@ -70,7 +70,11 @@ async fn handle_connection(state: state::StateType, raw_stream: TcpStream, addr:
         if let Ok(s) = msg.to_text() {
             let mut locked_state = state.lock().unwrap();
             if let Err(e) = handle_message(&mut locked_state, &tx, s) {
-                info!("Error occurred when handling message: {}\nMessage: {}", e, msg.to_string());
+                info!(
+                    "Error occurred when handling message: {}\nMessage: {}",
+                    e,
+                    msg.to_string()
+                );
             }
         }
         future::ok(())
