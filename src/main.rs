@@ -51,11 +51,10 @@ fn handle_message(state: &mut state::State, tx: &Tx, raw_payload: &str) -> Resul
 }
 
 async fn handle_connection(state: state::StateType, raw_stream: TcpStream, addr: SocketAddr) {
-    info!("Incoming TCP connection from: {}", addr);
-
     let ws_stream = tokio_tungstenite::accept_async(raw_stream)
         .await
         .expect("Error during the websocket handshake occurred");
+
     info!("WebSocket connection established: {}", addr);
 
     // Insert the write part of this peer to the peer map.
@@ -63,21 +62,15 @@ async fn handle_connection(state: state::StateType, raw_stream: TcpStream, addr:
 
     let (outgoing, incoming) = ws_stream.split();
 
-    let broadcast_incoming = incoming.try_for_each(|msg| {
+    let handle_incoming = incoming.try_for_each(|msg| {
         if !msg.is_text() {
             return future::ok(());
         }
 
-        info!(
-            "Received a message from {}: {}",
-            addr,
-            msg.to_text().unwrap()
-        );
-
         if let Ok(s) = msg.to_text() {
             let mut locked_state = state.lock().unwrap();
             if let Err(e) = handle_message(&mut locked_state, &tx, s) {
-                info!("Error handling message: {}", e);
+                info!("Error occurred when handling message: {}\nMessage: {}", e, msg.to_string());
             }
         }
         future::ok(())
@@ -85,8 +78,8 @@ async fn handle_connection(state: state::StateType, raw_stream: TcpStream, addr:
 
     let receive_from_others = rx.map(Ok).forward(outgoing);
 
-    pin_mut!(broadcast_incoming, receive_from_others);
-    future::select(broadcast_incoming, receive_from_others).await;
+    pin_mut!(handle_incoming, receive_from_others);
+    future::select(handle_incoming, receive_from_others).await;
 
     info!("{} disconnected", &addr);
     //locked_state.remove(&addr); todo: handle termination logic
