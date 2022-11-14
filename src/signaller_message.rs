@@ -28,4 +28,5 @@ pub enum SignallerMessage {
     Leave {
         uuid: String,
     },
+    KeepAlive {},
 }
