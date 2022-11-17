@@ -46,6 +46,7 @@ fn handle_message(state: &mut state::State, tx: &Tx, raw_payload: &str) -> Resul
         | SignallerMessage::Ice { uuid: _, to } => {
             forward_message(state, to)?;
         }
+        SignallerMessage::KeepAlive {} => {}
     };
     Ok(())
 }
