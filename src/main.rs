@@ -39,7 +39,7 @@ fn handle_message(state: &mut state::State, tx: &Tx, raw_payload: &str) -> Resul
             state.add_sharer(Uuid::parse_str(&uuid)?, tx.clone())?;
         }
         SignallerMessage::Leave { uuid } => {
-            state.end_session(Uuid::parse_str(&uuid)?)?;
+            state.leave_session(Uuid::parse_str(&uuid)?)?;
         }
         SignallerMessage::Offer { uuid: _, to }
         | SignallerMessage::Answer { uuid: _, to }
