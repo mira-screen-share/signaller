@@ -57,17 +57,27 @@ impl State {
         Ok(())
     }
 
-    pub fn end_session(&mut self, id: Uuid) -> Result<()> {
-        // todo: remove all peers from session (if exists), then remove session
-        let session_id = self.peers.get(&id).unwrap().session;
-        if !self.sessions.contains_key(&session_id) {
-            return Err(format_err!("Session does not exist"));
+    /// Leave a session. id is the uuid of the viewer or the sharer.
+    pub fn leave_session(&mut self, id: Uuid) -> Result<()> {
+        if self.sessions.contains_key(&id) {
+            // id is host. remove session
+            let session = self.sessions.remove(&id).unwrap();
+            for viewer in session.viewers {
+                self.peers[&viewer]
+                    .sender
+                    .unbounded_send(Message::Close(None))?;
+                self.peers.remove(&viewer);
+            }
+            self.peers.remove(&session.sharer);
+        } else {
+            let peer = self
+                .peers
+                .get(&id)
+                .ok_or_else(|| format_err!("Peer does not exist"))?;
+            let session = self.sessions.get_mut(&peer.session).unwrap();
+            session.viewers.remove(&id);
+            self.peers.remove(&id);
         }
-        let session = self.sessions.remove(&session_id).unwrap();
-        for viewer in session.viewers {
-            self.peers.remove(&viewer);
-        }
-        self.peers.remove(&session.sharer);
         Ok(())
     }
 }
