@@ -59,15 +59,21 @@ impl State {
 
     /// Leave a session. id is the uuid of the viewer or the sharer.
     pub fn leave_session(&mut self, id: Uuid) -> Result<()> {
-        if self.sessions.contains_key(&id) { // id is host. remove session
+        if self.sessions.contains_key(&id) {
+            // id is host. remove session
             let session = self.sessions.remove(&id).unwrap();
             for viewer in session.viewers {
-                self.peers[&viewer].sender.unbounded_send(Message::Close(None))?;
+                self.peers[&viewer]
+                    .sender
+                    .unbounded_send(Message::Close(None))?;
                 self.peers.remove(&viewer);
             }
             self.peers.remove(&session.sharer);
         } else {
-            let peer = self.peers.get(&id).ok_or_else(|| format_err!("Peer does not exist"))?;
+            let peer = self
+                .peers
+                .get(&id)
+                .ok_or_else(|| format_err!("Peer does not exist"))?;
             let session = self.sessions.get_mut(&peer.session).unwrap();
             session.viewers.remove(&id);
             self.peers.remove(&id);
