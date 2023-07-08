@@ -12,10 +12,10 @@ use crate::signaller_message::SignallerMessage;
 use failure::{format_err, Error};
 use log::info;
 
-use tokio::net::{TcpListener, TcpStream};
-use tungstenite::protocol::Message;
 use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
+use tokio::net::{TcpListener, TcpStream};
+use tungstenite::protocol::Message;
 
 type Result<T> = std::result::Result<T, Error>;
 type Tx = UnboundedSender<Message>;
@@ -46,7 +46,7 @@ fn handle_message(state: &mut state::State, tx: &Tx, raw_payload: &str) -> Resul
             state.add_viewer(from, room.clone(), tx.clone())?;
             forward_message(state, room)?;
         }
-        SignallerMessage::Start { } => {
+        SignallerMessage::Start {} => {
             let tries = 3;
             let mut room = generate_room_id(ROOM_ID_LEN);
             for _ in 0..tries {
@@ -57,11 +57,10 @@ fn handle_message(state: &mut state::State, tx: &Tx, raw_payload: &str) -> Resul
             }
             info!("New room: {}", room);
             state.add_sharer(room.clone(), tx.clone())?;
-            tx.unbounded_send(
-                Message::Text(serde_json::to_string(&SignallerMessage::StartResponse {
-                    room,
-                })?)
-            ).unwrap_or_else(|e| {
+            tx.unbounded_send(Message::Text(serde_json::to_string(
+                &SignallerMessage::StartResponse { room },
+            )?))
+            .unwrap_or_else(|e| {
                 info!("Error sending start response: {}", e);
             });
         }

@@ -26,7 +26,9 @@ pub enum SignallerMessage {
         to: String,
     },
     Start {},
-    StartResponse { room: String },
+    StartResponse {
+        room: String,
+    },
     Leave {
         from: String,
     },

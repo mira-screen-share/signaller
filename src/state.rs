@@ -28,7 +28,8 @@ impl State {
         if self.sessions.contains_key(&room) {
             return Err(format_err!("room already exists"));
         }
-        self.sessions.insert(room.clone(), Session::new(room.clone()));
+        self.sessions
+            .insert(room.clone(), Session::new(room.clone()));
         self.peers.insert(
             room.clone(),
             Peer {
@@ -44,7 +45,11 @@ impl State {
         if !self.sessions.contains_key(&room) {
             return Err(format_err!("room does not exist"));
         }
-        self.sessions.get_mut(&room).unwrap().viewers.insert(id.clone());
+        self.sessions
+            .get_mut(&room)
+            .unwrap()
+            .viewers
+            .insert(id.clone());
         self.peers.insert(
             id,
             Peer {
