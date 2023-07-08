@@ -43,7 +43,8 @@ fn handle_message(state: &mut state::State, tx: &Tx, raw_payload: &str) -> Resul
         }
         SignallerMessage::Offer { uuid: _, to }
         | SignallerMessage::Answer { uuid: _, to }
-        | SignallerMessage::Ice { uuid: _, to } => {
+        | SignallerMessage::Ice { uuid: _, to }
+        | SignallerMessage::JoinDeclined { to } => {
             forward_message(state, to)?;
         }
         SignallerMessage::KeepAlive {} => {}

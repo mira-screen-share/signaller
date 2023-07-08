@@ -22,6 +22,9 @@ pub enum SignallerMessage {
         uuid: String,
         room: String,
     },
+    JoinDeclined {
+        to: String,
+    },
     Start {
         uuid: String,
     },
