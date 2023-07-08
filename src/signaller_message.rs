@@ -5,31 +5,30 @@ use serde::{Deserialize, Serialize};
 pub enum SignallerMessage {
     Offer {
         // sdp: RTCSessionDescription,
-        uuid: String,
+        from: String,
         to: String,
     },
     Answer {
         // sdp: RTCSessionDescription,
-        uuid: String,
+        from: String,
         to: String,
     },
     Ice {
         // ice: RTCIceCandidateInit,
-        uuid: String,
+        from: String,
         to: String,
     },
     Join {
-        uuid: String,
+        from: String,
         room: String,
     },
     JoinDeclined {
         to: String,
     },
-    Start {
-        uuid: String,
-    },
+    Start {},
+    StartResponse { room: String },
     Leave {
-        uuid: String,
+        from: String,
     },
     KeepAlive {},
 }

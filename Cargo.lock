@@ -580,12 +580,12 @@ dependencies = [
  "futures-channel",
  "futures-util",
  "log",
+ "rand",
  "serde",
  "serde_json",
  "tokio",
  "tokio-tungstenite",
  "tungstenite",
- "uuid",
 ]
 
 [[package]]
@@ -791,12 +791,6 @@ name = "utf-8"
 version = "0.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "09cc8ee72d2a9becf2f2febe0205bbed8fc6615b7cb429ad062dc7b7ddd036a9"
-
-[[package]]
-name = "uuid"
-version = "1.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "feb41e78f93363bb2df8b0e86a2ca30eed7806ea16ea0c790d757cf93f79be83"
 
 [[package]]
 name = "version_check"
