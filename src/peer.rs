@@ -1,12 +1,11 @@
 use futures_channel::mpsc::UnboundedSender;
 use serde::{Deserialize, Serialize};
 use tungstenite::protocol::Message;
-use uuid::Uuid;
 
 type Tx = UnboundedSender<Message>;
 
 pub struct Peer {
-    pub session: Uuid,
+    pub room: String,
     pub sender: Tx,
     pub peer_type: PeerType,
 }

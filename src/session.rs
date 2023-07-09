@@ -1,13 +1,12 @@
 use std::collections::HashSet;
-use uuid::Uuid;
 
 pub struct Session {
-    pub sharer: Uuid,
-    pub viewers: HashSet<Uuid>,
+    pub sharer: String,
+    pub viewers: HashSet<String>,
 }
 
 impl Session {
-    pub fn new(sharer: Uuid) -> Self {
+    pub fn new(sharer: String) -> Self {
         Session {
             sharer,
             viewers: Default::default(),

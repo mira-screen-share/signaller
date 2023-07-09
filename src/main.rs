@@ -12,41 +12,68 @@ use crate::signaller_message::SignallerMessage;
 use failure::{format_err, Error};
 use log::info;
 
+use rand::distributions::Alphanumeric;
+use rand::{thread_rng, Rng};
 use tokio::net::{TcpListener, TcpStream};
 use tungstenite::protocol::Message;
-use uuid::Uuid;
 
 type Result<T> = std::result::Result<T, Error>;
 type Tx = UnboundedSender<Message>;
+
+const ROOM_ID_LEN: usize = 6;
+
+fn generate_room_id(len: usize) -> String {
+    thread_rng()
+        .sample_iter(&Alphanumeric)
+        .take(len)
+        .map(char::from)
+        .collect()
+}
 
 fn handle_message(state: &mut state::State, tx: &Tx, raw_payload: &str) -> Result<()> {
     let msg: SignallerMessage = serde_json::from_str(raw_payload)?;
     let forward_message = |state: &state::State, to: String| -> Result<()> {
         let peer = state
             .peers
-            .get(&Uuid::parse_str(&to)?)
+            .get(&to)
             .ok_or_else(|| format_err!("Peer does not exist"))?;
         peer.sender.unbounded_send(raw_payload.into())?;
         Ok(())
     };
 
     match msg {
-        SignallerMessage::Join { uuid, room } => {
-            state.add_viewer(Uuid::parse_str(&uuid)?, Uuid::parse_str(&room)?, tx.clone())?;
+        SignallerMessage::Join { from, room } => {
+            state.add_viewer(from, room.clone(), tx.clone())?;
             forward_message(state, room)?;
         }
-        SignallerMessage::Start { uuid } => {
-            state.add_sharer(Uuid::parse_str(&uuid)?, tx.clone())?;
+        SignallerMessage::Start {} => {
+            let tries = 3;
+            let mut room = generate_room_id(ROOM_ID_LEN);
+            for _ in 0..tries {
+                if !state.sessions.contains_key(&room) {
+                    break;
+                }
+                room = generate_room_id(ROOM_ID_LEN);
+            }
+            info!("New room: {}", room);
+            state.add_sharer(room.clone(), tx.clone())?;
+            tx.unbounded_send(Message::Text(serde_json::to_string(
+                &SignallerMessage::StartResponse { room },
+            )?))
+            .unwrap_or_else(|e| {
+                info!("Error sending start response: {}", e);
+            });
         }
-        SignallerMessage::Leave { uuid } => {
-            state.leave_session(Uuid::parse_str(&uuid)?)?;
+        SignallerMessage::Leave { from } => {
+            state.leave_session(from)?;
         }
-        SignallerMessage::Offer { uuid: _, to }
-        | SignallerMessage::Answer { uuid: _, to }
-        | SignallerMessage::Ice { uuid: _, to } => {
+        SignallerMessage::Offer { from: _, to }
+        | SignallerMessage::Answer { from: _, to }
+        | SignallerMessage::Ice { from: _, to }
+        | SignallerMessage::JoinDeclined { to } => {
             forward_message(state, to)?;
         }
-        SignallerMessage::KeepAlive {} => {}
+        SignallerMessage::KeepAlive {} | SignallerMessage::StartResponse { .. } => {}
     };
     Ok(())
 }

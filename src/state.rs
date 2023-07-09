@@ -5,14 +5,13 @@ use futures_channel::mpsc::UnboundedSender;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tungstenite::protocol::Message;
-use uuid::Uuid;
 
 type Result<T> = std::result::Result<T, Error>;
 type Tx = UnboundedSender<Message>;
 
 pub struct State {
-    pub sessions: HashMap<Uuid, Session>,
-    pub peers: HashMap<Uuid, Peer>,
+    pub sessions: HashMap<String, Session>,
+    pub peers: HashMap<String, Peer>,
 }
 
 pub type StateType = Arc<Mutex<State>>;
@@ -25,15 +24,16 @@ impl State {
         }))
     }
 
-    pub fn add_sharer(&mut self, id: Uuid, sender: Tx) -> Result<()> {
-        if self.sessions.contains_key(&id) {
-            return Err(format_err!("Session already exists"));
+    pub fn add_sharer(&mut self, room: String, sender: Tx) -> Result<()> {
+        if self.sessions.contains_key(&room) {
+            return Err(format_err!("room already exists"));
         }
-        self.sessions.insert(id, Session::new(id));
+        self.sessions
+            .insert(room.clone(), Session::new(room.clone()));
         self.peers.insert(
-            id,
+            room.clone(),
             Peer {
-                session: id,
+                room,
                 sender,
                 peer_type: PeerType::Sharer {},
             },
@@ -41,15 +41,19 @@ impl State {
         Ok(())
     }
 
-    pub fn add_viewer(&mut self, id: Uuid, session: Uuid, sender: Tx) -> Result<()> {
-        if !self.sessions.contains_key(&session) {
-            return Err(format_err!("Session does not exist"));
+    pub fn add_viewer(&mut self, id: String, room: String, sender: Tx) -> Result<()> {
+        if !self.sessions.contains_key(&room) {
+            return Err(format_err!("room does not exist"));
         }
-        self.sessions.get_mut(&session).unwrap().viewers.insert(id);
+        self.sessions
+            .get_mut(&room)
+            .unwrap()
+            .viewers
+            .insert(id.clone());
         self.peers.insert(
             id,
             Peer {
-                session,
+                room,
                 sender,
                 peer_type: PeerType::Viewer {},
             },
@@ -57,8 +61,8 @@ impl State {
         Ok(())
     }
 
-    /// Leave a session. id is the uuid of the viewer or the sharer.
-    pub fn leave_session(&mut self, id: Uuid) -> Result<()> {
+    /// Leave a session. id is the id of the viewer or the sharer.
+    pub fn leave_session(&mut self, id: String) -> Result<()> {
         if self.sessions.contains_key(&id) {
             // id is host. remove session
             let session = self.sessions.remove(&id).unwrap();
@@ -74,7 +78,7 @@ impl State {
                 .peers
                 .get(&id)
                 .ok_or_else(|| format_err!("Peer does not exist"))?;
-            let session = self.sessions.get_mut(&peer.session).unwrap();
+            let session = self.sessions.get_mut(&peer.room).unwrap();
             session.viewers.remove(&id);
             self.peers.remove(&id);
         }
