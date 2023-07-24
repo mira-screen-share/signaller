@@ -12,7 +12,7 @@ use crate::signaller_message::SignallerMessage;
 use failure::{format_err, Error};
 use log::info;
 
-use rand::distributions::{Alphanumeric, Distribution};
+use rand::distributions::{Distribution};
 use rand::{thread_rng, Rng};
 use tokio::net::{TcpListener, TcpStream};
 use tungstenite::protocol::Message;
