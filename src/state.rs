@@ -90,6 +90,6 @@ impl State {
             .peers
             .get(viewer_uuid)
             .ok_or_else(|| format_err!("Peer does not exist"))?;
-        return Ok(peer.room.clone());
+        Ok(peer.room.clone())
     }
 }
