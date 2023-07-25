@@ -84,4 +84,12 @@ impl State {
         }
         Ok(())
     }
+
+    pub fn get_room_id_from_peer_uuid(&self, viewer_uuid: &String) -> Result<String> {
+        let peer = self
+            .peers
+            .get(viewer_uuid)
+            .ok_or_else(|| format_err!("Peer does not exist"))?;
+        Ok(peer.room.clone())
+    }
 }

@@ -73,6 +73,7 @@ fn handle_message(state: &mut state::State, tx: &Tx, raw_payload: &str) -> Resul
             });
         }
         SignallerMessage::Leave { from } => {
+            forward_message(state, state.get_room_id_from_peer_uuid(&from)?)?;
             state.leave_session(from)?;
         }
         SignallerMessage::Offer { from: _, to }
