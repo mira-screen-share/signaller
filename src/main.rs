@@ -12,7 +12,7 @@ use crate::signaller_message::SignallerMessage;
 use failure::{format_err, Error};
 use log::info;
 
-use rand::distributions::Alphanumeric;
+use rand::distributions::Distribution;
 use rand::{thread_rng, Rng};
 use tokio::net::{TcpListener, TcpStream};
 use tungstenite::protocol::Message;
@@ -20,11 +20,19 @@ use tungstenite::protocol::Message;
 type Result<T> = std::result::Result<T, Error>;
 type Tx = UnboundedSender<Message>;
 
-const ROOM_ID_LEN: usize = 6;
+const ROOM_ID_LEN: usize = 5;
 
 fn generate_room_id(len: usize) -> String {
+    pub struct UserFriendlyAlphabet;
+    impl Distribution<u8> for UserFriendlyAlphabet {
+        fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> u8 {
+            const GEN_ASCII_STR_CHARSET: &[u8] = b"ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+            GEN_ASCII_STR_CHARSET[(rng.next_u32() >> (32 - 5)) as usize]
+        }
+    }
+
     thread_rng()
-        .sample_iter(&Alphanumeric)
+        .sample_iter(&UserFriendlyAlphabet)
         .take(len)
         .map(char::from)
         .collect()
