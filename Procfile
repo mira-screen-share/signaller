@@ -1,1 +1,1 @@
-web: ./target/release/signaller 0.0.0.0:$PORT
+web: ./target/release/signaller --address 0.0.0.0:$PORT
