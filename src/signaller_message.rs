@@ -1,5 +1,14 @@
 use serde::{Deserialize, Serialize};
 
+#[derive(Default, Clone, Debug, Serialize, Deserialize)]
+pub struct IceServer {
+    pub url: String,
+    #[serde(default)]
+    pub username: String,
+    #[serde(default)]
+    pub password: String,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum SignallerMessage {
@@ -33,4 +42,8 @@ pub enum SignallerMessage {
         from: String,
     },
     KeepAlive {},
+    IceServers {},
+    IceServersResponse {
+        ice_servers: Vec<IceServer>,
+    },
 }
