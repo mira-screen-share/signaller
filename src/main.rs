@@ -2,25 +2,25 @@ use std::net::SocketAddr;
 use std::path::Path;
 
 use clap::Parser;
-use failure::{Error, format_err};
+use failure::{format_err, Error};
 use futures_channel::mpsc::{unbounded, UnboundedSender};
 use futures_util::{future, pin_mut, stream::TryStreamExt, StreamExt};
 use log::info;
-use rand::{Rng, thread_rng};
 use rand::distributions::Distribution;
+use rand::{thread_rng, Rng};
 use tokio::net::{TcpListener, TcpStream};
 use tungstenite::protocol::Message;
 
 use crate::signaller_message::SignallerMessage;
 use crate::state::StateType;
 
+mod args;
+mod config;
 mod peer;
 mod session;
 mod signaller_message;
 mod state;
 mod twilio_helper;
-mod config;
-mod args;
 
 type Result<T> = std::result::Result<T, Error>;
 type Tx = UnboundedSender<Message>;
@@ -72,7 +72,8 @@ async fn handle_message(state: &mut state::State, tx: &Tx, raw_payload: &str) ->
             state.add_sharer(room.clone(), tx.clone())?;
             tx.unbounded_send(Message::Text(serde_json::to_string(
                 &SignallerMessage::StartResponse { room },
-            )?)).unwrap_or_else(|e| {
+            )?))
+            .unwrap_or_else(|e| {
                 info!("Error sending start response: {}", e);
             });
         }
@@ -84,7 +85,8 @@ async fn handle_message(state: &mut state::State, tx: &Tx, raw_payload: &str) ->
             let ice_servers = state.get_ice_servers().await;
             tx.unbounded_send(Message::Text(serde_json::to_string(
                 &SignallerMessage::IceServersResponse { ice_servers },
-            )?)).unwrap_or_else(|e| {
+            )?))
+            .unwrap_or_else(|e| {
                 info!("Error sending ice server response: {}", e);
             });
         }
@@ -101,7 +103,11 @@ async fn handle_message(state: &mut state::State, tx: &Tx, raw_payload: &str) ->
     Ok(())
 }
 
-async fn process_message(msg: Message, state: StateType, tx: &Tx) -> std::result::Result<(), tungstenite::Error> {
+async fn process_message(
+    msg: Message,
+    state: StateType,
+    tx: &Tx,
+) -> std::result::Result<(), tungstenite::Error> {
     if !msg.is_text() {
         return Ok(());
     }
@@ -110,10 +116,10 @@ async fn process_message(msg: Message, state: StateType, tx: &Tx) -> std::result
         let mut locked_state = state.lock().await;
         if let Err(e) = handle_message(&mut locked_state, &tx, s).await {
             info!(
-                    "Error occurred when handling message: {}\nMessage: {}",
-                    e,
-                    msg.to_string()
-                );
+                "Error occurred when handling message: {}\nMessage: {}",
+                e,
+                msg.to_string()
+            );
         }
     }
     Ok(())
@@ -134,9 +140,7 @@ async fn handle_connection(state: StateType, raw_stream: TcpStream, addr: Socket
 
     let (outgoing, incoming) = ws_stream.split();
 
-    let handle_incoming = incoming.try_for_each(|msg| {
-        process_message(msg, state.clone(), &tx)
-    });
+    let handle_incoming = incoming.try_for_each(|msg| process_message(msg, state.clone(), &tx));
 
     let receive_from_others = rx.map(Ok).forward(outgoing);
 
