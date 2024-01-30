@@ -13,6 +13,7 @@ pub struct Config {
     pub twilio_auth_token: Option<String>,
 }
 
+#[allow(dead_code)]
 pub fn load(path: &Path) -> Result<Config, failure::Error> {
     // create a new file if it does not exist
     if !path.exists() {
@@ -26,4 +27,11 @@ pub fn load(path: &Path) -> Result<Config, failure::Error> {
     let mut contents = String::new();
     file.read_to_string(&mut contents)?;
     Ok(toml::from_str(&contents)?)
+}
+
+pub fn from_env() -> Config {
+    Config {
+        twilio_account_sid: std::env::var("TWILIO_ACCOUNT_SID").ok(),
+        twilio_auth_token: std::env::var("TWILIO_AUTH_TOKEN").ok(),
+    }
 }

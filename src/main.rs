@@ -1,5 +1,4 @@
 use std::net::SocketAddr;
-use std::path::Path;
 
 use clap::Parser;
 use failure::{format_err, Error};
@@ -158,8 +157,7 @@ async fn main() -> Result<()> {
     );
     let args = args::Args::parse();
     let address = args.address;
-    let config_path = args.config;
-    let config = config::load(Path::new(&config_path))?;
+    let config = config::from_env();
 
     let state = state::State::new(&config);
 
