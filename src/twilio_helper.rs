@@ -3,7 +3,10 @@ use serde_json::Value;
 
 use crate::signaller_message::IceServer;
 
-pub async fn get_twilio_ice_servers(client: &twilio::TwilioClient, account_sid: &String) -> Vec<IceServer> {
+pub async fn get_twilio_ice_servers(
+    client: &twilio::TwilioClient,
+    account_sid: &String,
+) -> Vec<IceServer> {
     let response = client.create_token(account_sid.as_str()).send().await;
     match response {
         Ok(token) => token

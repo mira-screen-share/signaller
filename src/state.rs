@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use base64::Engine;
-use failure::{Error, format_err};
+use failure::{format_err, Error};
 use futures_channel::mpsc::UnboundedSender;
 use tokio::sync::Mutex;
 use tungstenite::protocol::Message;
@@ -36,16 +36,14 @@ impl State {
             sessions: Default::default(),
             peers: Default::default(),
             twilio_client: {
-                if let (Some(account_sid), Some(auth_token)) = (
-                    &config.twilio_account_sid,
-                    &config.twilio_auth_token,
-                ) {
+                if let (Some(account_sid), Some(auth_token)) =
+                    (&config.twilio_account_sid, &config.twilio_auth_token)
+                {
                     Some(twilio::TwilioClient::new(
                         "https://api.twilio.com",
                         TwilioAuthentication::BasicAuth {
-                            basic_auth: base64_engine.encode(
-                                format!("{}:{}", account_sid, auth_token).as_bytes()
-                            ),
+                            basic_auth: base64_engine
+                                .encode(format!("{}:{}", account_sid, auth_token).as_bytes()),
                         },
                     ))
                 } else {
