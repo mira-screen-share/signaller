@@ -5,9 +5,9 @@ use crate::signaller_message::IceServer;
 
 pub async fn get_twilio_ice_servers(
     client: &twilio::TwilioClient,
-    account_sid: &String,
+    account_sid: &str,
 ) -> Vec<IceServer> {
-    let response = client.create_token(account_sid.as_str()).send().await;
+    let response = client.create_token(account_sid).send().await;
     match response {
         Ok(token) => token
             .ice_servers

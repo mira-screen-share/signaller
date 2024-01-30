@@ -114,7 +114,7 @@ async fn process_message(
 
     if let Ok(s) = msg.to_text() {
         let mut locked_state = state.lock().await;
-        if let Err(e) = handle_message(&mut locked_state, &tx, s).await {
+        if let Err(e) = handle_message(&mut locked_state, tx, s).await {
             info!(
                 "Error occurred when handling message: {}\nMessage: {}",
                 e,
