@@ -1,14 +1,14 @@
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::{ Mutex};
 
 use base64::Engine;
 use failure::{Error, format_err};
 use futures_channel::mpsc::UnboundedSender;
+use tokio::sync::Mutex;
 use tungstenite::protocol::Message;
 use twilio::TwilioAuthentication;
-use crate::config::Config;
 
+use crate::config::Config;
 use crate::peer::{Peer, PeerType};
 use crate::session::Session;
 use crate::signaller_message::IceServer;

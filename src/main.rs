@@ -2,12 +2,12 @@ use std::net::SocketAddr;
 use std::path::Path;
 
 use clap::Parser;
-use failure::{format_err, Error};
+use failure::{Error, format_err};
 use futures_channel::mpsc::{unbounded, UnboundedSender};
 use futures_util::{future, pin_mut, stream::TryStreamExt, StreamExt};
 use log::info;
+use rand::{Rng, thread_rng};
 use rand::distributions::Distribution;
-use rand::{thread_rng, Rng};
 use tokio::net::{TcpListener, TcpStream};
 use tungstenite::protocol::Message;
 
