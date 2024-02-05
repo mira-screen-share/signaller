@@ -103,19 +103,17 @@ impl State {
         let session = self.sessions.remove(room).unwrap();
         self.sharer_ip_to_room.remove(&session.sharer_ip);
         let duration_sec = session.start_time.elapsed().unwrap().as_secs_f64();
+        info!("Ended session with duration: {}s", duration_sec);
         metrics::NUM_ONGOING_SESSIONS.dec();
         metrics::SESSION_DURATION_SEC.observe(duration_sec);
         for viewer in session.viewers {
-            self.peers[&viewer]
-                .sender
-                .unbounded_send(Message::Text(
-                    serde_json::to_string(&SignallerMessage::RoomClosed {
-                        to: viewer.clone(),
-                        room: room.clone(),
-                    })
-                    .unwrap(),
-                ))
-                .unwrap();
+            let _ = self.peers[&viewer].sender.unbounded_send(Message::Text(
+                serde_json::to_string(&SignallerMessage::RoomClosed {
+                    to: viewer.clone(),
+                    room: room.clone(),
+                })
+                .unwrap(),
+            ));
             self.peers.remove(&viewer);
         }
         self.peers.remove(&session.sharer);
