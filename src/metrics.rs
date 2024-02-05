@@ -1,9 +1,7 @@
-use std::net::SocketAddrV4;
-
 use lazy_static::lazy_static;
-use log::{error, info};
+use log::error;
 use prometheus::{Histogram, HistogramOpts, IntGauge, IntGaugeVec, Opts, Registry};
-use warp::{Filter, Rejection, Reply};
+use warp::{Rejection, Reply};
 
 lazy_static! {
     static ref REGISTRY: Registry = Registry::new();
@@ -23,7 +21,7 @@ lazy_static! {
     .expect("metric can be created");
 }
 
-fn register() {
+pub(crate) fn register() {
     REGISTRY
         .register(Box::new(NUM_CONNECTED_CLIENTS.clone()))
         .expect("collector can be registered");
@@ -35,14 +33,7 @@ fn register() {
         .expect("collector can be registered");
 }
 
-pub(crate) async fn start_server(addr: SocketAddrV4) {
-    register();
-    let metrics_route = warp::path!("metrics").and_then(metrics_handler);
-    info!("Metrics server listening on {}", addr);
-    warp::serve(metrics_route).run(addr).await;
-}
-
-async fn metrics_handler() -> Result<impl Reply, Rejection> {
+pub(crate) async fn metrics_handler() -> Result<impl Reply, Rejection> {
     use prometheus::Encoder;
     let encoder = prometheus::TextEncoder::new();
 

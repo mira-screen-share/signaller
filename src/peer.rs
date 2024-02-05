@@ -1,6 +1,6 @@
 use futures_channel::mpsc::UnboundedSender;
 use serde::{Deserialize, Serialize};
-use tungstenite::protocol::Message;
+use warp::ws::Message;
 
 type Tx = UnboundedSender<Message>;
 

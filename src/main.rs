@@ -8,9 +8,11 @@ use futures_util::{future, pin_mut, stream::TryStreamExt, StreamExt};
 use log::info;
 use rand::distributions::Distribution;
 use rand::{thread_rng, Rng};
-use tokio::net::{TcpListener, TcpStream};
-use tungstenite::protocol::Message;
+use warp::ws::Message;
+use warp::ws::WebSocket;
+use warp::Filter;
 
+use crate::args::Args;
 use crate::signaller_message::SignallerMessage;
 use crate::state::StateType;
 
@@ -56,7 +58,7 @@ async fn handle_message(
             .peers
             .get(&to)
             .ok_or_else(|| format_err!("Peer does not exist"))?;
-        peer.sender.unbounded_send(raw_payload.into())?;
+        peer.sender.unbounded_send(Message::text(raw_payload))?;
         Ok(())
     };
 
@@ -69,7 +71,7 @@ async fn handle_message(
                 }
                 Err(e) => {
                     info!("Error joining room: {}", e);
-                    tx.unbounded_send(Message::Text(serde_json::to_string(
+                    tx.unbounded_send(Message::text(serde_json::to_string(
                         &SignallerMessage::JoinDeclined {
                             to: from,
                             reason: e.to_string(),
@@ -92,7 +94,7 @@ async fn handle_message(
             }
             info!("New room: {}", room);
             state.add_sharer(room.clone(), tx.clone(), ip)?;
-            tx.unbounded_send(Message::Text(serde_json::to_string(
+            tx.unbounded_send(Message::text(serde_json::to_string(
                 &SignallerMessage::StartResponse { room },
             )?))
             .unwrap_or_else(|e| {
@@ -106,7 +108,7 @@ async fn handle_message(
         }
         SignallerMessage::IceServers {} => {
             let ice_servers = state.get_ice_servers().await;
-            tx.unbounded_send(Message::Text(serde_json::to_string(
+            tx.unbounded_send(Message::text(serde_json::to_string(
                 &SignallerMessage::IceServersResponse { ice_servers },
             )?))
             .unwrap_or_else(|e| {
@@ -132,37 +134,25 @@ async fn process_message(
     state: StateType,
     tx: &Tx,
     ip: SocketAddr,
-) -> std::result::Result<(), tungstenite::Error> {
+) -> std::result::Result<(), warp::Error> {
     if !msg.is_text() {
         return Ok(());
     }
 
-    if let Ok(s) = msg.to_text() {
+    if let Ok(s) = msg.to_str() {
         let mut locked_state = state.lock().await;
         if let Err(e) = handle_message(&mut locked_state, tx, s, ip).await {
             info!(
                 "Error occurred when handling message: {}\nMessage: {}",
                 e,
-                msg.to_string()
+                msg.to_str().unwrap().to_string()
             );
         }
     }
     Ok(())
 }
 
-async fn handle_connection(
-    args: args::Args,
-    state: StateType,
-    raw_stream: TcpStream,
-    addr: SocketAddr,
-) {
-    let ws_stream = match tokio_tungstenite::accept_async(raw_stream).await {
-        Ok(ws_stream) => ws_stream,
-        Err(_e) => {
-            return; // silently return if the incoming connection does not use ws protocol
-        }
-    };
-
+async fn handle_connection(args: Args, state: StateType, websocket: WebSocket, addr: SocketAddr) {
     let hashed_ip = metrics::hash_ip(addr.ip(), &args.ip_hash_salt).unwrap();
 
     metrics::NUM_CONNECTED_CLIENTS
@@ -172,8 +162,7 @@ async fn handle_connection(
 
     // Insert the write part of this peer to the peer map.
     let (tx, rx) = unbounded();
-
-    let (outgoing, incoming) = ws_stream.split();
+    let (outgoing, incoming) = websocket.split();
 
     let handle_incoming =
         incoming.try_for_each(|msg| process_message(msg, state.clone(), &tx, addr));
@@ -190,31 +179,44 @@ async fn handle_connection(
     state.lock().await.on_disconnect(&addr);
 }
 
+pub(crate) async fn start_server(addr: SocketAddrV4, args: Args, state: StateType) {
+    metrics::register();
+
+    use warp::{addr, any, ws};
+    let metrics_route = warp::path!("metrics").and_then(metrics::metrics_handler);
+    let ws_route = warp::path::end()
+        .and(ws())
+        .and(addr::remote())
+        .and(any().map(move || args.clone()))
+        .and(any().map(move || state.clone()))
+        .map(
+            |ws: ws::Ws, addr: Option<SocketAddr>, args: Args, state: StateType| {
+                ws.on_upgrade(move |socket| async move {
+                    handle_connection(args, state, socket, addr.unwrap()).await
+                })
+            },
+        );
+
+    info!("Server listening on {}", addr);
+    warp::serve(metrics_route.or(ws_route)).run(addr).await;
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     env_logger::init_from_env(
         env_logger::Env::default().filter_or(env_logger::DEFAULT_FILTER_ENV, "debug"),
     );
     let args = args::Args::parse();
-    let address = &args.address;
-    let metrics_address = &args.metrics_address.split(':').collect::<Vec<&str>>();
-    let metrics_address = SocketAddrV4::new(
-        Ipv4Addr::from_str(metrics_address[0]).unwrap(),
-        metrics_address[1].parse().unwrap(),
+    let address = &args.address.split(':').collect::<Vec<&str>>();
+    let address = SocketAddrV4::new(
+        Ipv4Addr::from_str(address[0]).unwrap(),
+        address[1].parse().unwrap(),
     );
-    tokio::spawn(metrics::start_server(metrics_address));
 
     let config = config::from_env();
     let state = state::State::new(&config);
 
-    // Create the event loop and TCP listener we'll accept connections on.
-    let listener = TcpListener::bind(&address).await.expect("Failed to bind");
-    info!("Listening on: {}", address);
-
-    // Let's spawn the handling of each connection in a separate task.
-    while let Ok((stream, addr)) = listener.accept().await {
-        tokio::spawn(handle_connection(args.clone(), state.clone(), stream, addr));
-    }
+    start_server(address, args, state).await;
 
     Ok(())
 }
