@@ -1352,7 +1352,6 @@ dependencies = [
  "tokio",
  "tokio-tungstenite 0.17.2",
  "toml",
- "tungstenite 0.17.3",
  "twilio-rs",
  "warp",
 ]

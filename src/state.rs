@@ -7,8 +7,8 @@ use failure::{format_err, Error};
 use futures_channel::mpsc::UnboundedSender;
 use log::info;
 use tokio::sync::Mutex;
-use tungstenite::protocol::Message;
 use twilio::TwilioAuthentication;
+use warp::ws::Message;
 
 use crate::config::Config;
 use crate::metrics;
@@ -107,7 +107,7 @@ impl State {
         metrics::NUM_ONGOING_SESSIONS.dec();
         metrics::SESSION_DURATION_SEC.observe(duration_sec);
         for viewer in session.viewers {
-            let _ = self.peers[&viewer].sender.unbounded_send(Message::Text(
+            let _ = self.peers[&viewer].sender.unbounded_send(Message::text(
                 serde_json::to_string(&SignallerMessage::RoomClosed {
                     to: viewer.clone(),
                     room: room.clone(),
