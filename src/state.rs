@@ -59,13 +59,13 @@ impl State {
         }))
     }
 
-    pub fn add_sharer(&mut self, room: String, sender: Tx, ip: &SocketAddr) -> Result<()> {
+    pub fn add_sharer(&mut self, room: String, sender: Tx, ip: SocketAddr) -> Result<()> {
         if self.sessions.contains_key(&room) {
             return Err(format_err!("room already exists"));
         }
         self.sessions
-            .insert(room.clone(), Session::new(room.clone(), ip.clone()));
-        self.sharer_ip_to_room.insert(ip.clone(), room.clone());
+            .insert(room.clone(), Session::new(room.clone(), ip));
+        self.sharer_ip_to_room.insert(ip, room.clone());
         metrics::NUM_ONGOING_SESSIONS.inc();
         self.peers.insert(
             room.clone(),

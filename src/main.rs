@@ -48,7 +48,7 @@ async fn handle_message(
     state: &mut state::State,
     tx: &Tx,
     raw_payload: &str,
-    ip: &SocketAddr,
+    ip: SocketAddr,
 ) -> Result<()> {
     let msg: SignallerMessage = serde_json::from_str(raw_payload)?;
     let forward_message = |state: &state::State, to: String| -> Result<()> {
@@ -131,7 +131,7 @@ async fn process_message(
     msg: Message,
     state: StateType,
     tx: &Tx,
-    ip: &SocketAddr,
+    ip: SocketAddr,
 ) -> std::result::Result<(), tungstenite::Error> {
     if !msg.is_text() {
         return Ok(());
@@ -176,7 +176,7 @@ async fn handle_connection(
     let (outgoing, incoming) = ws_stream.split();
 
     let handle_incoming =
-        incoming.try_for_each(|msg| process_message(msg, state.clone(), &tx, &addr));
+        incoming.try_for_each(|msg| process_message(msg, state.clone(), &tx, addr));
 
     let receive_from_others = rx.map(Ok).forward(outgoing);
 
