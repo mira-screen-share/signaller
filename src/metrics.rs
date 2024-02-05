@@ -1,3 +1,5 @@
+use std::net::IpAddr;
+
 use lazy_static::lazy_static;
 use log::error;
 use prometheus::{Histogram, HistogramOpts, IntGauge, IntGaugeVec, Opts, Registry};
@@ -61,7 +63,7 @@ pub(crate) async fn metrics_handler() -> Result<impl Reply, Rejection> {
     Ok(res)
 }
 
-pub fn hash_ip(ip: std::net::IpAddr, salt: &str) -> Result<String, argon2::password_hash::Error> {
+pub fn hash_ip(ip: IpAddr, salt: &str) -> Result<String, argon2::password_hash::Error> {
     use argon2::{
         password_hash::{PasswordHasher, SaltString},
         Argon2,

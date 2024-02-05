@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::net::SocketAddr;
+use std::net::IpAddr;
 use std::sync::Arc;
 
 use base64::Engine;
@@ -22,7 +22,7 @@ type Tx = UnboundedSender<Message>;
 
 pub struct State {
     pub sessions: HashMap<String, Session>,
-    pub sharer_ip_to_room: HashMap<SocketAddr, String>,
+    pub sharer_ip_to_room: HashMap<IpAddr, String>,
     pub peers: HashMap<String, Peer>,
     pub twilio_client: Option<twilio::TwilioClient>,
     pub twilio_account_sid: Option<String>,
@@ -59,7 +59,7 @@ impl State {
         }))
     }
 
-    pub fn add_sharer(&mut self, room: String, sender: Tx, ip: SocketAddr) -> Result<()> {
+    pub fn add_sharer(&mut self, room: String, sender: Tx, ip: IpAddr) -> Result<()> {
         if self.sessions.contains_key(&room) {
             return Err(format_err!("room already exists"));
         }
@@ -136,7 +136,7 @@ impl State {
         Ok(())
     }
 
-    pub fn on_disconnect(&mut self, ip_hash: &SocketAddr) {
+    pub fn on_disconnect(&mut self, ip_hash: &IpAddr) {
         if let Some(room) = self.sharer_ip_to_room.get(ip_hash) {
             self.remove_session(&room.clone());
         }

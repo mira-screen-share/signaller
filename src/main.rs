@@ -1,4 +1,4 @@
-use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
+use std::net::{IpAddr, Ipv4Addr, SocketAddrV4};
 use std::str::FromStr;
 
 use clap::Parser;
@@ -50,7 +50,7 @@ async fn handle_message(
     state: &mut state::State,
     tx: &Tx,
     raw_payload: &str,
-    ip: SocketAddr,
+    ip: IpAddr,
 ) -> Result<()> {
     let msg: SignallerMessage = serde_json::from_str(raw_payload)?;
     let forward_message = |state: &state::State, to: String| -> Result<()> {
@@ -133,7 +133,7 @@ async fn process_message(
     msg: Message,
     state: StateType,
     tx: &Tx,
-    ip: SocketAddr,
+    ip: IpAddr,
 ) -> std::result::Result<(), warp::Error> {
     if !msg.is_text() {
         return Ok(());
@@ -152,8 +152,8 @@ async fn process_message(
     Ok(())
 }
 
-async fn handle_connection(args: Args, state: StateType, websocket: WebSocket, addr: SocketAddr) {
-    let hashed_ip = metrics::hash_ip(addr.ip(), &args.ip_hash_salt).unwrap();
+async fn handle_connection(args: Args, state: StateType, websocket: WebSocket, addr: IpAddr) {
+    let hashed_ip = metrics::hash_ip(addr, &args.ip_hash_salt).unwrap();
 
     metrics::NUM_CONNECTED_CLIENTS
         .with_label_values(&[hashed_ip.as_str()])
@@ -182,17 +182,23 @@ async fn handle_connection(args: Args, state: StateType, websocket: WebSocket, a
 pub(crate) async fn start_server(addr: SocketAddrV4, args: Args, state: StateType) {
     metrics::register();
 
-    use warp::{addr, any, ws};
+    use warp::{any, ws};
     let metrics_route = warp::path!("metrics").and_then(metrics::metrics_handler);
     let ws_route = warp::path::end()
         .and(ws())
-        .and(addr::remote())
+        .and(warp_real_ip::get_forwarded_for())
         .and(any().map(move || args.clone()))
         .and(any().map(move || state.clone()))
         .map(
-            |ws: ws::Ws, addr: Option<SocketAddr>, args: Args, state: StateType| {
+            |ws: ws::Ws, ip_addrs: Vec<IpAddr>, args: Args, state: StateType| {
                 ws.on_upgrade(move |socket| async move {
-                    handle_connection(args, state, socket, addr.unwrap()).await
+                    handle_connection(
+                        args,
+                        state,
+                        socket,
+                        *ip_addrs.last().expect("failed to get ip"),
+                    )
+                    .await
                 })
             },
         );
