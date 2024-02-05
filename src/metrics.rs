@@ -70,19 +70,13 @@ async fn metrics_handler() -> Result<impl Reply, Rejection> {
     Ok(res)
 }
 
-pub fn hash_ip(
-    ip: std::net::IpAddr,
-    salt: &String,
-) -> Result<String, argon2::password_hash::Error> {
+pub fn hash_ip(ip: std::net::IpAddr, salt: &str) -> Result<String, argon2::password_hash::Error> {
     use argon2::{
         password_hash::{PasswordHasher, SaltString},
         Argon2,
     };
     Ok(Argon2::default()
-        .hash_password(
-            ip.to_string().as_bytes(),
-            &SaltString::from_b64(salt.as_str())?,
-        )?
+        .hash_password(ip.to_string().as_bytes(), &SaltString::from_b64(salt)?)?
         .hash
         .unwrap()
         .to_string())
