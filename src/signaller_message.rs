@@ -33,6 +33,7 @@ pub enum SignallerMessage {
     },
     JoinDeclined {
         to: String,
+        reason: String,
     },
     Start {},
     StartResponse {
@@ -40,6 +41,10 @@ pub enum SignallerMessage {
     },
     Leave {
         from: String,
+    },
+    RoomClosed {
+        to: String,
+        room: String,
     },
     KeepAlive {},
     IceServers {},
