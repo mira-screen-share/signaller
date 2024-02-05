@@ -1,4 +1,5 @@
-use std::net::SocketAddr;
+use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
+use std::str::FromStr;
 
 use clap::Parser;
 use failure::{format_err, Error};
@@ -15,6 +16,7 @@ use crate::state::StateType;
 
 mod args;
 mod config;
+mod metrics;
 mod peer;
 mod session;
 mod signaller_message;
@@ -132,6 +134,7 @@ async fn handle_connection(state: StateType, raw_stream: TcpStream, addr: Socket
         }
     };
 
+    metrics::CONNECTED_CLIENTS.inc();
     info!("WebSocket connection established: {}", addr);
 
     // Insert the write part of this peer to the peer map.
@@ -146,6 +149,7 @@ async fn handle_connection(state: StateType, raw_stream: TcpStream, addr: Socket
     pin_mut!(handle_incoming, receive_from_others);
     future::select(handle_incoming, receive_from_others).await;
 
+    metrics::CONNECTED_CLIENTS.dec();
     info!("{} disconnected", &addr);
     //locked_state.remove(&addr); todo: handle termination logic
 }
@@ -157,8 +161,14 @@ async fn main() -> Result<()> {
     );
     let args = args::Args::parse();
     let address = args.address;
-    let config = config::from_env();
+    let metrics_address = args.metrics_address.split(':').collect::<Vec<&str>>();
+    let metrics_address = SocketAddrV4::new(
+        Ipv4Addr::from_str(metrics_address[0]).unwrap(),
+        metrics_address[1].parse().unwrap(),
+    );
+    tokio::spawn(metrics::start_server(metrics_address));
 
+    let config = config::from_env();
     let state = state::State::new(&config);
 
     // Create the event loop and TCP listener we'll accept connections on.
