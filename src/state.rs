@@ -1,9 +1,11 @@
 use std::collections::HashMap;
+use std::net::SocketAddr;
 use std::sync::Arc;
 
 use base64::Engine;
 use failure::{format_err, Error};
 use futures_channel::mpsc::UnboundedSender;
+use log::info;
 use tokio::sync::Mutex;
 use tungstenite::protocol::Message;
 use twilio::TwilioAuthentication;
@@ -12,7 +14,7 @@ use crate::config::Config;
 use crate::metrics;
 use crate::peer::{Peer, PeerType};
 use crate::session::Session;
-use crate::signaller_message::IceServer;
+use crate::signaller_message::{IceServer, SignallerMessage};
 use crate::twilio_helper::get_twilio_ice_servers;
 
 type Result<T> = std::result::Result<T, Error>;
@@ -20,6 +22,7 @@ type Tx = UnboundedSender<Message>;
 
 pub struct State {
     pub sessions: HashMap<String, Session>,
+    pub sharer_ip_to_room: HashMap<SocketAddr, String>,
     pub peers: HashMap<String, Peer>,
     pub twilio_client: Option<twilio::TwilioClient>,
     pub twilio_account_sid: Option<String>,
@@ -35,6 +38,7 @@ impl State {
         );
         Arc::new(Mutex::new(State {
             sessions: Default::default(),
+            sharer_ip_to_room: Default::default(),
             peers: Default::default(),
             twilio_client: {
                 if let (Some(account_sid), Some(auth_token)) =
@@ -55,12 +59,13 @@ impl State {
         }))
     }
 
-    pub fn add_sharer(&mut self, room: String, sender: Tx) -> Result<()> {
+    pub fn add_sharer(&mut self, room: String, sender: Tx, ip: &SocketAddr) -> Result<()> {
         if self.sessions.contains_key(&room) {
             return Err(format_err!("room already exists"));
         }
         self.sessions
-            .insert(room.clone(), Session::new(room.clone()));
+            .insert(room.clone(), Session::new(room.clone(), ip.clone()));
+        self.sharer_ip_to_room.insert(ip.clone(), room.clone());
         metrics::NUM_ONGOING_SESSIONS.inc();
         self.peers.insert(
             room.clone(),
@@ -93,21 +98,34 @@ impl State {
         Ok(())
     }
 
+    fn remove_session(&mut self, room: &String) {
+        info!("Removing session {}", room);
+        let session = self.sessions.remove(room).unwrap();
+        self.sharer_ip_to_room.remove(&session.sharer_ip);
+        let duration_sec = session.start_time.elapsed().unwrap().as_secs_f64();
+        metrics::NUM_ONGOING_SESSIONS.dec();
+        metrics::SESSION_DURATION_SEC.observe(duration_sec);
+        for viewer in session.viewers {
+            self.peers[&viewer]
+                .sender
+                .unbounded_send(Message::Text(
+                    serde_json::to_string(&SignallerMessage::RoomClosed {
+                        to: viewer.clone(),
+                        room: room.clone(),
+                    })
+                    .unwrap(),
+                ))
+                .unwrap();
+            self.peers.remove(&viewer);
+        }
+        self.peers.remove(&session.sharer);
+    }
+
     /// Leave a session. id is the id of the viewer or the sharer.
     pub fn leave_session(&mut self, id: String) -> Result<()> {
         if self.sessions.contains_key(&id) {
             // id is host. remove session
-            let session = self.sessions.remove(&id).unwrap();
-            let duration_sec = session.start_time.elapsed().unwrap().as_secs_f64();
-            metrics::NUM_ONGOING_SESSIONS.dec();
-            metrics::SESSION_DURATION_SEC.observe(duration_sec);
-            for viewer in session.viewers {
-                self.peers[&viewer]
-                    .sender
-                    .unbounded_send(Message::Close(None))?;
-                self.peers.remove(&viewer);
-            }
-            self.peers.remove(&session.sharer);
+            self.remove_session(&id);
         } else {
             let peer = self
                 .peers
@@ -118,6 +136,12 @@ impl State {
             self.peers.remove(&id);
         }
         Ok(())
+    }
+
+    pub fn on_disconnect(&mut self, ip_hash: &SocketAddr) {
+        if let Some(room) = self.sharer_ip_to_room.get(ip_hash) {
+            self.remove_session(&room.clone());
+        }
     }
 
     pub fn get_room_id_from_peer_uuid(&self, viewer_uuid: &String) -> Result<String> {

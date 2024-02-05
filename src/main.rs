@@ -44,7 +44,12 @@ fn generate_room_id(len: usize) -> String {
         .collect()
 }
 
-async fn handle_message(state: &mut state::State, tx: &Tx, raw_payload: &str) -> Result<()> {
+async fn handle_message(
+    state: &mut state::State,
+    tx: &Tx,
+    raw_payload: &str,
+    ip: &SocketAddr,
+) -> Result<()> {
     let msg: SignallerMessage = serde_json::from_str(raw_payload)?;
     let forward_message = |state: &state::State, to: String| -> Result<()> {
         let peer = state
@@ -57,8 +62,24 @@ async fn handle_message(state: &mut state::State, tx: &Tx, raw_payload: &str) ->
 
     match msg {
         SignallerMessage::Join { from, room } => {
-            state.add_viewer(from, room.clone(), tx.clone())?;
-            forward_message(state, room)?;
+            match state.add_viewer(from.clone(), room.clone(), tx.clone()) {
+                Ok(_) => {
+                    info!("{} joined room {}", from, room);
+                    forward_message(state, room)?;
+                }
+                Err(e) => {
+                    info!("Error joining room: {}", e);
+                    tx.unbounded_send(Message::Text(serde_json::to_string(
+                        &SignallerMessage::JoinDeclined {
+                            to: from,
+                            reason: e.to_string(),
+                        },
+                    )?))
+                    .unwrap_or_else(|e| {
+                        info!("Error sending failed to join response: {}", e);
+                    });
+                }
+            };
         }
         SignallerMessage::Start {} => {
             let tries = 3;
@@ -70,7 +91,7 @@ async fn handle_message(state: &mut state::State, tx: &Tx, raw_payload: &str) ->
                 room = generate_room_id(ROOM_ID_LEN);
             }
             info!("New room: {}", room);
-            state.add_sharer(room.clone(), tx.clone())?;
+            state.add_sharer(room.clone(), tx.clone(), ip)?;
             tx.unbounded_send(Message::Text(serde_json::to_string(
                 &SignallerMessage::StartResponse { room },
             )?))
@@ -79,6 +100,7 @@ async fn handle_message(state: &mut state::State, tx: &Tx, raw_payload: &str) ->
             });
         }
         SignallerMessage::Leave { from } => {
+            info!("{} is leaving", from);
             forward_message(state, state.get_room_id_from_peer_uuid(&from)?)?;
             state.leave_session(from)?;
         }
@@ -94,7 +116,8 @@ async fn handle_message(state: &mut state::State, tx: &Tx, raw_payload: &str) ->
         SignallerMessage::Offer { from: _, to }
         | SignallerMessage::Answer { from: _, to }
         | SignallerMessage::Ice { from: _, to }
-        | SignallerMessage::JoinDeclined { to } => {
+        | SignallerMessage::RoomClosed { to, room: _ }
+        | SignallerMessage::JoinDeclined { to, reason: _ } => {
             forward_message(state, to)?;
         }
         SignallerMessage::KeepAlive {}
@@ -108,6 +131,7 @@ async fn process_message(
     msg: Message,
     state: StateType,
     tx: &Tx,
+    ip: &SocketAddr,
 ) -> std::result::Result<(), tungstenite::Error> {
     if !msg.is_text() {
         return Ok(());
@@ -115,7 +139,7 @@ async fn process_message(
 
     if let Ok(s) = msg.to_text() {
         let mut locked_state = state.lock().await;
-        if let Err(e) = handle_message(&mut locked_state, tx, s).await {
+        if let Err(e) = handle_message(&mut locked_state, tx, s, ip).await {
             info!(
                 "Error occurred when handling message: {}\nMessage: {}",
                 e,
@@ -151,7 +175,8 @@ async fn handle_connection(
 
     let (outgoing, incoming) = ws_stream.split();
 
-    let handle_incoming = incoming.try_for_each(|msg| process_message(msg, state.clone(), &tx));
+    let handle_incoming =
+        incoming.try_for_each(|msg| process_message(msg, state.clone(), &tx, &addr));
 
     let receive_from_others = rx.map(Ok).forward(outgoing);
 
@@ -162,7 +187,7 @@ async fn handle_connection(
         .with_label_values(&[hashed_ip.as_str()])
         .dec();
     info!("{} disconnected", &addr);
-    //locked_state.remove(&addr); todo: handle termination logic
+    state.lock().await.on_disconnect(&addr);
 }
 
 #[tokio::main]
