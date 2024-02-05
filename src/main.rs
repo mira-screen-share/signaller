@@ -126,7 +126,12 @@ async fn process_message(
     Ok(())
 }
 
-async fn handle_connection(state: StateType, raw_stream: TcpStream, addr: SocketAddr) {
+async fn handle_connection(
+    args: args::Args,
+    state: StateType,
+    raw_stream: TcpStream,
+    addr: SocketAddr,
+) {
     let ws_stream = match tokio_tungstenite::accept_async(raw_stream).await {
         Ok(ws_stream) => ws_stream,
         Err(_e) => {
@@ -134,7 +139,11 @@ async fn handle_connection(state: StateType, raw_stream: TcpStream, addr: Socket
         }
     };
 
-    metrics::CONNECTED_CLIENTS.inc();
+    let hashed_ip = metrics::hash_ip(addr.ip(), &args.ip_hash_salt).unwrap();
+
+    metrics::NUM_CONNECTED_CLIENTS
+        .with_label_values(&[hashed_ip.as_str()])
+        .inc();
     info!("WebSocket connection established: {}", addr);
 
     // Insert the write part of this peer to the peer map.
@@ -149,7 +158,9 @@ async fn handle_connection(state: StateType, raw_stream: TcpStream, addr: Socket
     pin_mut!(handle_incoming, receive_from_others);
     future::select(handle_incoming, receive_from_others).await;
 
-    metrics::CONNECTED_CLIENTS.dec();
+    metrics::NUM_CONNECTED_CLIENTS
+        .with_label_values(&[hashed_ip.as_str()])
+        .dec();
     info!("{} disconnected", &addr);
     //locked_state.remove(&addr); todo: handle termination logic
 }
@@ -160,8 +171,8 @@ async fn main() -> Result<()> {
         env_logger::Env::default().filter_or(env_logger::DEFAULT_FILTER_ENV, "debug"),
     );
     let args = args::Args::parse();
-    let address = args.address;
-    let metrics_address = args.metrics_address.split(':').collect::<Vec<&str>>();
+    let address = &args.address;
+    let metrics_address = &args.metrics_address.split(':').collect::<Vec<&str>>();
     let metrics_address = SocketAddrV4::new(
         Ipv4Addr::from_str(metrics_address[0]).unwrap(),
         metrics_address[1].parse().unwrap(),
@@ -177,7 +188,7 @@ async fn main() -> Result<()> {
 
     // Let's spawn the handling of each connection in a separate task.
     while let Ok((stream, addr)) = listener.accept().await {
-        tokio::spawn(handle_connection(state.clone(), stream, addr));
+        tokio::spawn(handle_connection(args.clone(), state.clone(), stream, addr));
     }
 
     Ok(())

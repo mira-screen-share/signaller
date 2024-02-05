@@ -1,8 +1,10 @@
 use std::collections::HashSet;
+use std::time::SystemTime;
 
 pub struct Session {
     pub sharer: String,
     pub viewers: HashSet<String>,
+    pub start_time: SystemTime,
 }
 
 impl Session {
@@ -10,6 +12,7 @@ impl Session {
         Session {
             sharer,
             viewers: Default::default(),
+            start_time: SystemTime::now(),
         }
     }
 }

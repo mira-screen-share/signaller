@@ -9,6 +9,7 @@ use tungstenite::protocol::Message;
 use twilio::TwilioAuthentication;
 
 use crate::config::Config;
+use crate::metrics;
 use crate::peer::{Peer, PeerType};
 use crate::session::Session;
 use crate::signaller_message::IceServer;
@@ -60,6 +61,7 @@ impl State {
         }
         self.sessions
             .insert(room.clone(), Session::new(room.clone()));
+        metrics::NUM_ONGOING_SESSIONS.inc();
         self.peers.insert(
             room.clone(),
             Peer {
@@ -96,6 +98,9 @@ impl State {
         if self.sessions.contains_key(&id) {
             // id is host. remove session
             let session = self.sessions.remove(&id).unwrap();
+            let duration_sec = session.start_time.elapsed().unwrap().as_secs_f64();
+            metrics::NUM_ONGOING_SESSIONS.dec();
+            metrics::SESSION_DURATION_SEC.observe(duration_sec);
             for viewer in session.viewers {
                 self.peers[&viewer]
                     .sender
