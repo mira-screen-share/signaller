@@ -1,4 +1,4 @@
-use std::net::{IpAddr, Ipv4Addr, SocketAddrV4};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::str::FromStr;
 
 use clap::Parser;
@@ -50,7 +50,7 @@ async fn handle_message(
     state: &mut state::State,
     tx: &Tx,
     raw_payload: &str,
-    ip: IpAddr,
+    socket_addr: SocketAddr,
 ) -> Result<()> {
     let msg: SignallerMessage = serde_json::from_str(raw_payload)?;
     let forward_message = |state: &state::State, to: String| -> Result<()> {
@@ -93,7 +93,7 @@ async fn handle_message(
                 room = generate_room_id(ROOM_ID_LEN);
             }
             info!("New room: {}", room);
-            state.add_sharer(room.clone(), tx.clone(), ip)?;
+            state.add_sharer(room.clone(), tx.clone(), socket_addr)?;
             tx.unbounded_send(Message::text(serde_json::to_string(
                 &SignallerMessage::StartResponse { room },
             )?))
@@ -133,7 +133,7 @@ async fn process_message(
     msg: Message,
     state: StateType,
     tx: &Tx,
-    ip: IpAddr,
+    socket_addr: SocketAddr,
 ) -> std::result::Result<(), warp::Error> {
     if !msg.is_text() {
         return Ok(());
@@ -141,7 +141,7 @@ async fn process_message(
 
     if let Ok(s) = msg.to_str() {
         let mut locked_state = state.lock().await;
-        if let Err(e) = handle_message(&mut locked_state, tx, s, ip).await {
+        if let Err(e) = handle_message(&mut locked_state, tx, s, socket_addr).await {
             info!(
                 "Error occurred when handling message: {}\nMessage: {}",
                 e,
@@ -152,20 +152,32 @@ async fn process_message(
     Ok(())
 }
 
-async fn handle_connection(args: Args, state: StateType, websocket: WebSocket, addr: IpAddr) {
-    let hashed_ip = metrics::hash_ip(addr, &args.ip_hash_salt).unwrap();
+async fn handle_connection(
+    args: Args,
+    state: StateType,
+    websocket: WebSocket,
+    socket_addr: SocketAddr,
+    real_ip: Option<&IpAddr>,
+) {
+    let hashed_ip = real_ip
+        .map(|real_ip| metrics::hash_ip(real_ip, &args.ip_hash_salt).unwrap())
+        .unwrap_or("unknown".to_string());
 
     metrics::NUM_CONNECTED_CLIENTS
         .with_label_values(&[hashed_ip.as_str()])
         .inc();
-    info!("WebSocket connection established: {}", addr);
+
+    info!(
+        "WebSocket connection established: {socket_addr}, real IP: {:?}",
+        real_ip
+    );
 
     // Insert the write part of this peer to the peer map.
     let (tx, rx) = unbounded();
     let (outgoing, incoming) = websocket.split();
 
     let handle_incoming =
-        incoming.try_for_each(|msg| process_message(msg, state.clone(), &tx, addr));
+        incoming.try_for_each(|msg| process_message(msg, state.clone(), &tx, socket_addr));
 
     let receive_from_others = rx.map(Ok).forward(outgoing);
 
@@ -175,28 +187,35 @@ async fn handle_connection(args: Args, state: StateType, websocket: WebSocket, a
     metrics::NUM_CONNECTED_CLIENTS
         .with_label_values(&[hashed_ip.as_str()])
         .dec();
-    info!("{} disconnected", &addr);
-    state.lock().await.on_disconnect(&addr);
+
+    info!("{socket_addr} disconnected, real IP: {:?}", real_ip);
+    state.lock().await.on_disconnect(&socket_addr);
 }
 
 pub(crate) async fn start_server(addr: SocketAddrV4, args: Args, state: StateType) {
     metrics::register();
 
-    use warp::{any, ws};
+    use warp::{addr, any, ws};
     let metrics_route = warp::path!("metrics").and_then(metrics::metrics_handler);
     let ws_route = warp::path::end()
         .and(ws())
+        .and(addr::remote())
         .and(warp_real_ip::get_forwarded_for())
         .and(any().map(move || args.clone()))
         .and(any().map(move || state.clone()))
         .map(
-            |ws: ws::Ws, ip_addrs: Vec<IpAddr>, args: Args, state: StateType| {
+            |ws: ws::Ws,
+             socket_addr: Option<SocketAddr>,
+             real_ip_addrs: Vec<IpAddr>,
+             args: Args,
+             state: StateType| {
                 ws.on_upgrade(move |socket| async move {
                     handle_connection(
                         args,
                         state,
                         socket,
-                        *ip_addrs.last().expect("failed to get ip"),
+                        socket_addr.unwrap(),
+                        real_ip_addrs.last(),
                     )
                     .await
                 })
