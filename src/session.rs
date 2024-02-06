@@ -1,21 +1,21 @@
 use std::collections::HashSet;
-use std::net::IpAddr;
+use std::net::SocketAddr;
 use std::time::SystemTime;
 
 pub struct Session {
     pub sharer: String,
     pub viewers: HashSet<String>,
     pub start_time: SystemTime,
-    pub sharer_ip: IpAddr,
+    pub sharer_socket_addr: SocketAddr,
 }
 
 impl Session {
-    pub fn new(sharer: String, sharer_ip: IpAddr) -> Self {
+    pub fn new(sharer: String, sharer_socket_addr: SocketAddr) -> Self {
         Session {
             sharer,
             viewers: Default::default(),
             start_time: SystemTime::now(),
-            sharer_ip,
+            sharer_socket_addr,
         }
     }
 }

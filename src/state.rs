@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::net::IpAddr;
+use std::net::SocketAddr;
 use std::sync::Arc;
 
 use base64::Engine;
@@ -22,7 +22,7 @@ type Tx = UnboundedSender<Message>;
 
 pub struct State {
     pub sessions: HashMap<String, Session>,
-    pub sharer_ip_to_room: HashMap<IpAddr, String>,
+    pub sharer_socket_addr_to_room: HashMap<SocketAddr, String>,
     pub peers: HashMap<String, Peer>,
     pub twilio_client: Option<twilio::TwilioClient>,
     pub twilio_account_sid: Option<String>,
@@ -38,7 +38,7 @@ impl State {
         );
         Arc::new(Mutex::new(State {
             sessions: Default::default(),
-            sharer_ip_to_room: Default::default(),
+            sharer_socket_addr_to_room: Default::default(),
             peers: Default::default(),
             twilio_client: {
                 if let (Some(account_sid), Some(auth_token)) =
@@ -59,13 +59,14 @@ impl State {
         }))
     }
 
-    pub fn add_sharer(&mut self, room: String, sender: Tx, ip: IpAddr) -> Result<()> {
+    pub fn add_sharer(&mut self, room: String, sender: Tx, socket_addr: SocketAddr) -> Result<()> {
         if self.sessions.contains_key(&room) {
             return Err(format_err!("room already exists"));
         }
         self.sessions
-            .insert(room.clone(), Session::new(room.clone(), ip));
-        self.sharer_ip_to_room.insert(ip, room.clone());
+            .insert(room.clone(), Session::new(room.clone(), socket_addr));
+        self.sharer_socket_addr_to_room
+            .insert(socket_addr, room.clone());
         metrics::NUM_ONGOING_SESSIONS.inc();
         self.peers.insert(
             room.clone(),
@@ -101,7 +102,8 @@ impl State {
     fn remove_session(&mut self, room: &String) {
         info!("Removing session {}", room);
         let session = self.sessions.remove(room).unwrap();
-        self.sharer_ip_to_room.remove(&session.sharer_ip);
+        self.sharer_socket_addr_to_room
+            .remove(&session.sharer_socket_addr);
         let duration_sec = session.start_time.elapsed().unwrap().as_secs_f64();
         info!("Ended session with duration: {}s", duration_sec);
         metrics::NUM_ONGOING_SESSIONS.dec();
@@ -136,8 +138,8 @@ impl State {
         Ok(())
     }
 
-    pub fn on_disconnect(&mut self, ip_hash: &IpAddr) {
-        if let Some(room) = self.sharer_ip_to_room.get(ip_hash) {
+    pub fn on_disconnect(&mut self, socket_addr: &SocketAddr) {
+        if let Some(room) = self.sharer_socket_addr_to_room.get(socket_addr) {
             self.remove_session(&room.clone());
         }
     }
